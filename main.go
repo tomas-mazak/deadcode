@@ -42,9 +42,13 @@ func main() {
 
 func analyzeResults() {
 	for pkgPath, pkg := range packages {
-		for identifier, used := range pkg.identifiers {
-			if !used {
-				fmt.Printf("UNUSED: pkg=%v identifier=%v\n", pkgPath, identifier)
+		if !pkg.imported {
+			fmt.Printf("PACKAGE NOT IMPORTED: pkg=%v\n", pkgPath)
+		} else {
+			for identifier, used := range pkg.identifiers {
+				if !used {
+					fmt.Printf("IDENTIFIER UNUSED: pkg=%v identifier=%v\n", pkgPath, identifier)
+				}
 			}
 		}
 	}
@@ -80,6 +84,7 @@ func traceFile(file *ast.File, moduleName, pkgName string) {
 	for _, imp := range file.Imports {
 		impPath := strings.Trim(imp.Path.Value, "\"")
 		if pkgInfo, ok := packages[impPath]; ok {
+			pkgInfo.imported = true
 			//fmt.Printf("DEBUG: found import %v, pkgInfo.name=%v, imp.Name=%v\n", impPath, pkgInfo.name, imp.Name)
 			switch {
 			case imp.Name == nil:
@@ -167,8 +172,10 @@ func traceFile(file *ast.File, moduleName, pkgName string) {
 					}
 				}
 				if samePackageOk {
-					if _, ok := packages[pkgName].identifiers[symbol]; ok {
-						packages[pkgName].identifiers[symbol] = true
+					if _, ok := packages[pkgName]; ok {
+						if _, ok := packages[pkgName].identifiers[symbol]; ok {
+							packages[pkgName].identifiers[symbol] = true
+						}
 					}
 				}
 			}
@@ -282,10 +289,11 @@ func analyzeFile(file *ast.File, fsPath, pkgPath, pkgName string) {
 type packageInfo struct {
 	name        string
 	fsPath      string
+	imported    bool
 	identifiers map[string]bool
 }
 
-var packages map[string]packageInfo = map[string]packageInfo{}
+var packages map[string]*packageInfo = map[string]*packageInfo{}
 
 func registerIdentifier(fsPath, pkgPath, pkgName, name string) {
 	// only consider exported identifiers - must begin with a capital letter
@@ -296,9 +304,10 @@ func registerIdentifier(fsPath, pkgPath, pkgName, name string) {
 	//log.Printf("DEBUG: fsPath=%v pkgPath=%v pkgName=%v name=%v", fsPath, pkgPath, pkgName, name)
 
 	if _, ok := packages[pkgPath]; !ok {
-		packages[pkgPath] = packageInfo{
+		packages[pkgPath] = &packageInfo{
 			name:        pkgName,
 			fsPath:      fsPath,
+			imported:    false,
 			identifiers: map[string]bool{},
 		}
 	}
